@@ -112,6 +112,25 @@ LM2_subclusters = pd.DataFrame.from_dict(sample_clusters_ap)
 curr_annot.loc[LM2_subclusters.query('sampleCluster=="cluster1"').index,'sampleCluster'] = 'LM2-C1'
 curr_annot.loc[LM2_subclusters.query('sampleCluster=="cluster2"').index,'sampleCluster'] = 'LM2-C2'
 
+# Proliferating cell subclusters
+curr_cells = list(new_cell_type_annot.query('sampleCluster=="Proliferating Cell"').index)
+curr_expr = rpkm_df[curr_cells]
+
+from scanpy.pp import filter_genes_dispersion
+varGeneRes = filter_genes_dispersion(data=curr_expr.T, n_bins=20, n_top_genes=500)
+flag = np.array([item[0] for item in varGeneRes])
+varGenes = list(curr_expr.index[flag])
+
+comp = principle_component_analysis(curr_expr.T, varGenes, n_comp=10, 
+                                    annot=None, annoGE=None, log=True,
+                                    pcPlot=False,pcPlotType='normal',markerPlot=False)
+
+sample_clusters_ap = spectral_clustering(comp['PCmatrix'],2)
+proliferating_subclusters = pd.DataFrame.from_dict(sample_clusters_ap)
+proliferating_subclusters.index = proliferating_subclusters['sampleName'].to_list()
+proliferating_subclusters['sampleCluster'] = proliferating_subclusters['sampleCluster'].replace('cluster','Proliferating Cell ', regex=True)
+
 # summary
 final_LM_subcluster_annotation = new_cell_type_annot.copy()
 final_LM_subcluster_annotation.loc[curr_annot.index, 'sampleCluster'] = curr_annot['sampleCluster'].to_list()
+final_LM_subcluster_annotation.loc[proliferating_subclusters.index, 'sampleCluster'] = proliferating_subclusters['sampleCluster'].to_list()
