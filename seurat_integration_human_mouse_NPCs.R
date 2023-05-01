@@ -1,0 +1,73 @@
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+options(future.globals.maxSize = 4000 * 1024^2)
+.libPaths()
+library(cowplot)
+library(patchwork)
+
+# load input data
+indir = 'Smartseq2_NPCs/'
+outdir = 'Smartseq2_NPCs/results'
+
+hsa_counts = read.table(paste(indir,'human_NPCs_counts.csv',sep=""), header=TRUE, sep="\t", 
+                        row.names=1, stringsAsFactors=FALSE, check.names = FALSE)
+
+mmu_counts = read.table(paste(indir,'mouse_NPCs_counts.csv',sep=""), header=TRUE, sep="\t", 
+                        row.names=1, stringsAsFactors=FALSE, check.names = FALSE)
+
+hsa_annot = read.table(paste(indir,'human_NPCs_cell_type_annotation_final.csv',sep=""), header=TRUE, 
+                       sep="\t", row.names=NULL, stringsAsFactors=FALSE, check.names = FALSE)
+
+mmu_annot = read.table(paste(indir,'mouse_NPCs_cell_type_annotation_final.csv',sep=""), header=TRUE, 
+                       sep="\t", row.names=NULL, stringsAsFactors=FALSE, check.names = FALSE)
+
+rownames(hsa_annot) = hsa_annot[,'sampleName']
+rownames(mmu_annot) = mmu_annot[,'sampleName']
+
+hsa_annot = hsa_annot[colnames(new_hsa_counts),]
+mmu_annot = mmu_annot[colnames(new_mmu_counts),]
+
+hsa_annot = hsa_annot[,c("sampleName","sampleCluster")]
+colnames(hsa_annot) = c("Cell","CellType")
+
+mmu_annot = mmu_annot[,c("sampleName","sampleCluster")]
+colnames(mmu_annot) = c("Cell","CellType")
+
+hsa_annot$Dataset = "Human"
+mmu_annot$Dataset = "Mouse"
+
+# create seurat object
+ob.list <- list()
+
+curr_obj <- CreateSeuratObject(counts = hsa_counts, min.cells = 3, min.features = 100, meta.data = hsa_annot)
+curr_obj <- NormalizeData(curr_obj, verbose = FALSE)
+curr_obj <- FindVariableFeatures(curr_obj, selection.method = "vst", nfeatures = 3000, verbose = FALSE)
+ob.list[[1]] = curr_obj
+
+curr_obj <- CreateSeuratObject(counts = mmu_counts, min.cells = 3, min.features = 100,  meta.data = mmu_annot)
+curr_obj <- NormalizeData(curr_obj, verbose = FALSE)
+curr_obj <- FindVariableFeatures(curr_obj, selection.method = "vst", nfeatures = 3000, verbose = FALSE)
+ob.list[[2]] = curr_obj
+
+ndim = 20
+
+# integrate dataset
+reference.list <- ob.list
+data.anchors <- FindIntegrationAnchors(object.list = reference.list, dims = 1:ndim, 
+                                       anchor.features=3000, verbose=FALSE)
+
+integrated <- IntegrateData(anchorset = data.anchors, dims = 1:ndim, verbose=FALSE)
+
+DefaultAssay(integrated) <- "integrated"
+integrated <- ScaleData(integrated, verbose = FALSE)
+integrated <- RunPCA(integrated, npcs = ndim, verbose = FALSE)
+integrated <- RunUMAP(integrated, reduction = "pca", dims = 1:ndim, 
+                      min.dist=0.7,verbose = FALSE)
+
+curr_pca = Embeddings(integrated, reduction = "pca")
+curr_umap = Embeddings(integrated, reduction = "umap")
+write.table(curr_umap, paste(outdir,"seurat_integrated_umap.csv",sep="/"), sep="\t", quote=FALSE)
+
+
+
